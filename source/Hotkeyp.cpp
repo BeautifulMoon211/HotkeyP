@@ -3029,7 +3029,8 @@ BOOL CALLBACK MainWndProc(HWND hWnd, UINT mesg, WPARAM wP, LPARAM lP)
 				}
 				break;
 				case LVN_KEYDOWN:
-					search(((LV_KEYDOWN*)lP)->wVKey);
+					if(GetKeyState(VK_MENU) >= 0)
+						search(((LV_KEYDOWN*)lP)->wVKey);
 					break;
 				case NM_DBLCLK:
 					PostMessage(hWnd, WM_COMMAND, 102, 0);
