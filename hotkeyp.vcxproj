@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
     <ProjectConfiguration Include="Debug no hook|Win32">
@@ -61,7 +61,7 @@
     <UseOfMfc>false</UseOfMfc>
     <CharacterSet>Unicode</CharacterSet>
     <WholeProgramOptimization>false</WholeProgramOptimization>
-    <PlatformToolset>v120_xp</PlatformToolset>
+    <PlatformToolset>v145</PlatformToolset>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
@@ -189,7 +189,7 @@
       <Culture>0x0405</Culture>
     </ResourceCompile>
     <PreLinkEvent>
-      <Command>C:\Programy\HotkeyP.exe -send window command 203 PlasHotKey</Command>
+      <Command>if exist "C:\Programy\HotkeyP.exe" ("C:\Programy\HotkeyP.exe" -send window command 203 PlasHotKey)</Command>
     </PreLinkEvent>
     <Link>
       <SuppressStartupBanner>true</SuppressStartupBanner>
@@ -236,7 +236,7 @@
       <Culture>0x0405</Culture>
     </ResourceCompile>
     <PreLinkEvent>
-      <Command>C:\Programy\HotkeyP.exe -send window command 203 PlasHotKey</Command>
+      <Command>if exist "C:\Programy\HotkeyP.exe" ("C:\Programy\HotkeyP.exe" -send window command 203 PlasHotKey)</Command>
     </PreLinkEvent>
     <Link>
       <AdditionalDependencies>htmlhelp.lib;version.lib;comctl32.lib;ws2_32.lib;%(AdditionalDependencies)</AdditionalDependencies>
@@ -286,7 +286,7 @@
       <Culture>0x0405</Culture>
     </ResourceCompile>
     <PreLinkEvent>
-      <Command>C:\Programy\HotkeyP.exe -send window command 203 PlasHotKey</Command>
+      <Command>if exist "C:\Programy\HotkeyP.exe" ("C:\Programy\HotkeyP.exe" -send window command 203 PlasHotKey)</Command>
     </PreLinkEvent>
     <Link>
       <SuppressStartupBanner>true</SuppressStartupBanner>
@@ -338,7 +338,7 @@
       <Culture>0x0405</Culture>
     </ResourceCompile>
     <PreLinkEvent>
-      <Command>C:\Programy\HotkeyP.exe -send window command 203 PlasHotKey</Command>
+      <Command>if exist "C:\Programy\HotkeyP.exe" ("C:\Programy\HotkeyP.exe" -send window command 203 PlasHotKey)</Command>
     </PreLinkEvent>
     <Link>
       <AdditionalDependencies>htmlhelp.lib;version.lib;comctl32.lib;ws2_32.lib;%(AdditionalDependencies)</AdditionalDependencies>
@@ -383,7 +383,7 @@
       <Culture>0x0405</Culture>
     </ResourceCompile>
     <PreLinkEvent>
-      <Command>C:\Programy\HotkeyP.exe -send window command 203 PlasHotKey</Command>
+      <Command>if exist "C:\Programy\HotkeyP.exe" ("C:\Programy\HotkeyP.exe" -send window command 203 PlasHotKey)</Command>
     </PreLinkEvent>
     <Link>
       <SuppressStartupBanner>true</SuppressStartupBanner>
@@ -426,7 +426,7 @@
       <Culture>0x0405</Culture>
     </ResourceCompile>
     <PreLinkEvent>
-      <Command>C:\Programy\HotkeyP.exe -send window command 203 PlasHotKey</Command>
+      <Command>if exist "C:\Programy\HotkeyP.exe" ("C:\Programy\HotkeyP.exe" -send window command 203 PlasHotKey)</Command>
     </PreLinkEvent>
     <Link>
       <AdditionalDependencies>htmlhelp.lib;version.lib;comctl32.lib;ws2_32.lib;%(AdditionalDependencies)</AdditionalDependencies>

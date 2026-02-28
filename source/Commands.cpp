@@ -1674,8 +1674,8 @@ void saveDesktopIcons(int action)
 	HWND w = FindWindowEx(FindWindowExA(FindWindowA("Progman", "Program Manager"), 0, "SHELLDLL_DefView", 0), 0, WC_LISTVIEW, 0/*"FolderView"*/);
 	if(w){
 		DWORD tid = GetWindowThreadProcessId(w, 0);
-		if(!klib) klib=LoadLibraryA("hook.dll");
-		HOOKPROC hproc = (HOOKPROC)GetProcAddress(klib, "_CallWndProcD@12");
+		if(!klib) klib=LoadLibraryA("hook64.dll");
+		HOOKPROC hproc = (HOOKPROC)GetProcAddress(klib, "CallWndProcD");
 		if(hproc){
 			HHOOK hook= SetWindowsHookEx(WH_CALLWNDPROC, hproc, (HINSTANCE)klib, tid);
 			if(hook){

@@ -25,7 +25,9 @@ Global
 		{44604F0E-A2BF-48BF-BD2A-1CF9A002395A}.Debug|Win32.ActiveCfg = Release|Win32
 		{44604F0E-A2BF-48BF-BD2A-1CF9A002395A}.Debug|x64.ActiveCfg = Release|x64
 		{44604F0E-A2BF-48BF-BD2A-1CF9A002395A}.Release|Win32.ActiveCfg = Release|Win32
+		{44604F0E-A2BF-48BF-BD2A-1CF9A002395A}.Release|Win32.Build.0 = Release|Win32
 		{44604F0E-A2BF-48BF-BD2A-1CF9A002395A}.Release|x64.ActiveCfg = Release|x64
+		{44604F0E-A2BF-48BF-BD2A-1CF9A002395A}.Release|x64.Build.0 = Release|x64
 		{C2C03DD4-8923-40E0-9545-69FCFA1DB9DF}.Debug no hook|Win32.ActiveCfg = Debug no hook|Win32
 		{C2C03DD4-8923-40E0-9545-69FCFA1DB9DF}.Debug no hook|Win32.Build.0 = Debug no hook|Win32
 		{C2C03DD4-8923-40E0-9545-69FCFA1DB9DF}.Debug no hook|x64.ActiveCfg = Debug no hook|x64
