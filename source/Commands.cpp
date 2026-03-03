@@ -3040,6 +3040,73 @@ void command(int cmd, TCHAR *param, HotKey *hk)
 		case 114: //Reload hook
 			reloadHook();
 			break;
+		case 117: //Toggle exclude-from-capture on the active window
+		{
+			// SetWindowDisplayAffinity(WDA_EXCLUDEFROMCAPTURE=0x11) keeps the window fully
+			// visible on screen but makes it appear as solid black in every capture API:
+			// Snipping Tool (Shift+Win+S), Windows.Graphics.Capture, DXGI, PrintScreen, OBS.
+			// Windows requires the caller to be in the window's own process, so we inject a
+			// tiny x64 shellcode via CreateRemoteThread to call it from inside that process.
+			static HWND hwExcluded = NULL;
+			HWND  hw;
+			DWORD affinity;
+			if (hwExcluded && IsWindow(hwExcluded)) {
+				hw         = hwExcluded;   // restore the previously excluded window
+				hwExcluded = NULL;
+				affinity   = 0;            // WDA_NONE
+			} else {
+				hw = getActiveWindow();
+				if (!hw) break;
+				hwExcluded = hw;
+				affinity   = 0x11;         // WDA_EXCLUDEFROMCAPTURE
+			}
+			// x64 shellcode: sub rsp,40 | mov rcx,<hw> | mov rdx,<affinity> | mov rax,<fn> | call rax | add rsp,40 | ret
+			BYTE sc[] = {
+				0x48,0x83,0xEC,0x28,             // sub  rsp,40   (align + shadow space)
+				0x48,0xB9, 0,0,0,0,0,0,0,0,     // mov  rcx,<hwnd>      [offset  6]
+				0x48,0xBA, 0,0,0,0,0,0,0,0,     // mov  rdx,<affinity>  [offset 16]
+				0x48,0xB8, 0,0,0,0,0,0,0,0,     // mov  rax,<funcAddr>  [offset 26]
+				0xFF,0xD0,                       // call rax
+				0x48,0x83,0xC4,0x28,             // add  rsp,40
+				0xC3                             // ret
+			};
+			ULONG_PTR hwVal  = (ULONG_PTR)hw;
+			ULONG_PTR afVal  = (ULONG_PTR)affinity;
+			ULONG_PTR fnAddr = (ULONG_PTR)GetProcAddress(
+			                       GetModuleHandleA("user32.dll"), "SetWindowDisplayAffinity");
+			CopyMemory(sc +  6, &hwVal,  8);
+			CopyMemory(sc + 16, &afVal,  8);
+			CopyMemory(sc + 26, &fnAddr, 8);
+			DWORD  pid = 0;
+			GetWindowThreadProcessId(hw, &pid);
+			HANDLE hProc = OpenProcess(
+			    PROCESS_CREATE_THREAD | PROCESS_VM_OPERATION | PROCESS_VM_WRITE, FALSE, pid);
+			if (!hProc) {
+				msg(_T("Cannot open process (error %u).\nTry running HotkeyP as administrator."), GetLastError());
+				hwExcluded = NULL;
+				break;
+			}
+			LPVOID pMem = VirtualAllocEx(hProc, NULL, sizeof(sc),
+			                              MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+			if (pMem) {
+				WriteProcessMemory(hProc, pMem, sc, sizeof(sc), NULL);
+				HANDLE hT = CreateRemoteThread(hProc, NULL, 0,
+				                (LPTHREAD_START_ROUTINE)pMem, NULL, 0, NULL);
+				if (hT) {
+					WaitForSingleObject(hT, 3000);
+					CloseHandle(hT);
+				} else {
+					msg(_T("CreateRemoteThread failed (error %u).\nTry running HotkeyP as administrator."), GetLastError());
+					hwExcluded = NULL;
+				}
+				VirtualFreeEx(hProc, pMem, 0, MEM_RELEASE);
+			} else {
+				msg(_T("VirtualAllocEx failed (error %u)."), GetLastError());
+				hwExcluded = NULL;
+			}
+			CloseHandle(hProc);
+			break;
+		}
 		case 116: //Set gateway to 192.168.1.{param}
 		{
 			// Build target gateway string: numeric param -> 192.168.1.N, or a full IP.

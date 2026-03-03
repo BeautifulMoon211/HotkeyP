@@ -48,7 +48,9 @@ char *cmdNames[]={
 	"Delete temporary files", "Save desktop icons", "Restore desktop icons", "Horizontal wheel", "Remove drive",
 	/*110*/"Opacity +", "Opacity -", "Maximize all", "Show HotkeyP window", "Reload hook",
 	"Minimize window to tray",
-	/*116*/"Set gateway"
+	/*116*/"Set gateway",
+	/*117*/"Exclude from capture",
+	/*118*/"Load 1.htk"
 };
 
 BYTE cmdIcons[]={
@@ -60,7 +62,9 @@ BYTE cmdIcons[]={
 /*75*/13, 13, 9, 11, 13, 13, 5, 5, 23, 24, 7, 2, 2, 2, 14,
 /*90*/9, 9, 10, 10, 17, 2, 2, 2, 9, 9, 4, 9, 9, 20, 6,
 /*105*/6, 5, 5, 13, 8, 9, 9, 9, 27, 27, 9,
-/*116*/27
+/*116*/27,
+/*117*/9,
+/*118*/10
 };
 
 TmainButton mainButton[]={
