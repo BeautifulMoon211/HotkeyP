@@ -47,7 +47,8 @@ char *cmdNames[]={
 	/*100*/"CD speed", "Hide application", "Minimize app to tray", "Magnifier", "Clear recent documents",
 	"Delete temporary files", "Save desktop icons", "Restore desktop icons", "Horizontal wheel", "Remove drive",
 	/*110*/"Opacity +", "Opacity -", "Maximize all", "Show HotkeyP window", "Reload hook",
-	"Minimize window to tray"
+	"Minimize window to tray",
+	/*116*/"Set gateway"
 };
 
 BYTE cmdIcons[]={
@@ -58,7 +59,8 @@ BYTE cmdIcons[]={
 /*60*/9, 22, 4, 16, 18, 9, 12, 3, 5, 5, 22, 20, 20, 17, 17,
 /*75*/13, 13, 9, 11, 13, 13, 5, 5, 23, 24, 7, 2, 2, 2, 14,
 /*90*/9, 9, 10, 10, 17, 2, 2, 2, 9, 9, 4, 9, 9, 20, 6,
-/*105*/6, 5, 5, 13, 8, 9, 9, 9, 27, 27, 9
+/*105*/6, 5, 5, 13, 8, 9, 9, 9, 27, 27, 9,
+/*116*/27
 };
 
 TmainButton mainButton[]={
@@ -1741,7 +1743,7 @@ BOOL CALLBACK AboutProc(HWND hWnd, UINT msg, WPARAM wP, LPARAM)
 					return TRUE;
 				case 123:
 					GetDlgItemTextA(hWnd, (int)wP, buf, static_cast<int>(sizeA(buf)-13));
-					if(!_tcscmp(lang, _T("Èesky"))) strcat(buf, "/indexCS.html");
+					if(!_tcscmp(lang, _T("ï¿½esky"))) strcat(buf, "/indexCS.html");
 					ShellExecuteA(0, 0, buf, 0, 0, SW_SHOWNORMAL);
 					break;
 			}

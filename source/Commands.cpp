@@ -7,6 +7,8 @@
 #include "hdr.h"
 #pragma hdrstop
 #include "hotkeyp.h"
+#include <iphlpapi.h>
+#pragma comment(lib, "iphlpapi.lib")
 
 int
 Nvolume=2,
@@ -3038,6 +3040,91 @@ void command(int cmd, TCHAR *param, HotKey *hk)
 		case 114: //Reload hook
 			reloadHook();
 			break;
+		case 116: //Set gateway to 192.168.1.{param}
+		{
+			// Build target gateway string: numeric param -> 192.168.1.N, or a full IP.
+			TCHAR gwStr[64];
+			if (_tcschr(param, '.')) {
+				_tcsncpy(gwStr, param, sizeA(gwStr) - 1);
+				gwStr[sizeA(gwStr) - 1] = 0;
+			} else {
+				if (iparam <= 0) { msg(_T("Invalid gateway parameter: %s"), param); break; }
+				_stprintf(gwStr, _T("192.168.1.%d"), iparam);
+			}
+
+			// Find the active adapter with a static IP via GetAdaptersInfo (Windows 2000+).
+			// Capture its current IP address, subnet mask, and GUID.
+			char adapterGUID[256] = {0};
+			char adapterIP[64]    = {0};
+			char adapterMask[64]  = {0};
+			{
+				ULONG bufLen = 16 * sizeof(IP_ADAPTER_INFO);
+				IP_ADAPTER_INFO *pInfo = (IP_ADAPTER_INFO*)new BYTE[bufLen];
+				DWORD ret = GetAdaptersInfo(pInfo, &bufLen);
+				if (ret == ERROR_BUFFER_OVERFLOW) {
+					delete[] pInfo;
+					pInfo = (IP_ADAPTER_INFO*)new BYTE[bufLen];
+					ret = GetAdaptersInfo(pInfo, &bufLen);
+				}
+				if (ret == NO_ERROR) {
+					for (IP_ADAPTER_INFO *p = pInfo; p; p = p->Next) {
+						const char *ip = p->IpAddressList.IpAddress.String;
+						if (ip[0] && strcmp(ip, "0.0.0.0") != 0 &&
+							p->Type != MIB_IF_TYPE_LOOPBACK) {
+							strncpy(adapterGUID, p->AdapterName,                   sizeof(adapterGUID) - 1);
+							strncpy(adapterIP,   p->IpAddressList.IpAddress.String, sizeof(adapterIP)   - 1);
+							strncpy(adapterMask, p->IpAddressList.IpMask.String,    sizeof(adapterMask) - 1);
+							break;
+						}
+					}
+				}
+				delete[] pInfo;
+			}
+			if (!adapterGUID[0]) { msg(_T("No active network adapter with a static IP was found.")); break; }
+
+			// Resolve the adapter's friendly connection name from the registry.
+			TCHAR ifName[256] = {0};
+			{
+				TCHAR regPath[512];
+				_stprintf(regPath,
+					_T("SYSTEM\\CurrentControlSet\\Control\\Network\\")
+					_T("{4D36E972-E325-11CE-BFC1-08002BE10318}\\%hs\\Connection"),
+					adapterGUID);
+				HKEY hKey;
+				if (RegOpenKeyEx(HKEY_LOCAL_MACHINE, regPath, 0, KEY_READ, &hKey) == ERROR_SUCCESS) {
+					DWORD sz = sizeof(ifName);
+					RegQueryValueEx(hKey, _T("Name"), NULL, NULL, (LPBYTE)ifName, &sz);
+					RegCloseKey(hKey);
+				}
+			}
+			if (!ifName[0]) { msg(_T("Could not find the adapter connection name in the registry.")); break; }
+
+			// Run netsh with the full static form: existing IP and mask are re-specified so
+			// they remain unchanged; only the gateway is updated to gwStr.
+			TCHAR netshParams[512];
+			_stprintf(netshParams,
+				_T("interface ip set address name=\"%s\" source=static addr=%hs mask=%hs gateway=%s gwmetric=1"),
+				ifName, adapterIP, adapterMask, gwStr);
+
+			SHELLEXECUTEINFO sei = {};
+			sei.cbSize       = sizeof(sei);
+			sei.fMask        = SEE_MASK_NOCLOSEPROCESS;
+			sei.lpVerb       = _T("runas"); // elevate via UAC if HotkeyP is not already admin
+			sei.lpFile       = _T("netsh");
+			sei.lpParameters = netshParams;
+			sei.nShow        = SW_HIDE;
+			if (ShellExecuteEx(&sei) && sei.hProcess) {
+				DWORD exitCode = 0;
+				WaitForSingleObject(sei.hProcess, 10000);
+				GetExitCodeProcess(sei.hProcess, &exitCode);
+				CloseHandle(sei.hProcess);
+				if (exitCode != 0)
+					msg(_T("netsh failed (exit code %u).\nCommand: netsh %s"), exitCode, netshParams);
+			} else {
+				msg(_T("Failed to launch netsh (error %u)."), GetLastError());
+			}
+			break;
+		}
 	}
 }
 //---------------------------------------------------------------------------
