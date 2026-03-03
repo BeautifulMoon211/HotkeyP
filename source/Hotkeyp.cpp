@@ -4110,6 +4110,13 @@ int PASCAL wWinMain(HINSTANCE hInstance, HINSTANCE, LPTSTR cmdLine, int cmdShow)
 
 	SetUnhandledExceptionFilter(unhandledExceptionFilter);
 	keyMapChanged(); //must be called before initList
+	//if 1.htk exists next to the exe, use it as the default file
+	{
+		TfileName oneDotHtk;
+		getExeDir(oneDotHtk, _T("1.htk"));
+		if(GetFileAttributes(oneDotHtk)!=INVALID_FILE_ATTRIBUTES)
+			lstrcpyn(iniFile, oneDotHtk, sizeA(iniFile));
+	}
 	rd(iniFile); //read HTK file
 	delRun(HKEY_LOCAL_MACHINE);
 	langChanged(); //set button captions according to selected language
