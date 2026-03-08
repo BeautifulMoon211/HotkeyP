@@ -49,8 +49,9 @@ char *cmdNames[]={
 	/*110*/"Opacity +", "Opacity -", "Maximize all", "Show HotkeyP window", "Reload hook",
 	"Minimize window to tray",
 	/*116*/"Set gateway",
-	/*117*/"Exclude from capture",
-	/*118*/"Load 1.htk"
+	/*117*/"",  // Exclude from capture — private, default Ctrl+Alt+Shift+X, not in UI
+	/*118*/"Load 1.htk",
+	/*119*/""  // red border only with Always on top (case 10), not assignable
 };
 
 BYTE cmdIcons[]={
@@ -64,7 +65,8 @@ BYTE cmdIcons[]={
 /*105*/6, 5, 5, 13, 8, 9, 9, 9, 27, 27, 9,
 /*116*/27,
 /*117*/9,
-/*118*/10
+/*118*/10,
+/*119*/9
 };
 
 TmainButton mainButton[]={
@@ -3337,6 +3339,11 @@ BOOL CALLBACK MainWndProc(HWND hWnd, UINT mesg, WPARAM wP, LPARAM lP)
 
 		case WM_HOTKEY:
 			lP=K_ONLYDOWN;
+			// Private: Ctrl+Alt+Shift+X triggers Exclude from capture (cmd 117), not in UI
+			if(wP==PRIVATE_HOTKEY_EXCLUDE_CAPTURE){
+				if(!pcLocked) command(117, _T(""));
+				break;
+			}
 			//!
 		case WM_USER+2654:
 			//hotkey was pressed
@@ -3984,6 +3991,170 @@ int commandS(TCHAR *cmdLine)
 	return 0;
 }
 //-------------------------------------------------------------------------
+// Returns true if hw is on the current virtual desktop (Windows 10+). If we can't
+// tell (e.g. older Windows or COM failure), returns true so we don't hide the overlay.
+static bool isWindowOnCurrentVirtualDesktop(HWND hw)
+{
+	typedef struct { void *QueryInterface; void *AddRef; void *Release; void *IsWindowOnCurrentVirtualDesktop; void *GetWindowDesktopId; void *MoveWindowToDesktop; } IVirtualDesktopManagerVtbl;
+	typedef struct { void *QueryInterface; void *AddRef; void *Release; void *QueryService; } IServiceProviderVtbl;
+	static const IID CLSID_ImmersiveShell = { 0xC2F03A33, 0x21F5, 0x47FA, { 0xB4, 0xBB, 0x15, 0x63, 0x62, 0xA2, 0xF2, 0x39 } };
+	static const IID IID_IVirtualDesktopManager = { 0xA5CD92FF, 0x29BE, 0x454C, { 0x8D, 0x04, 0xD8, 0x28, 0x79, 0xFB, 0x3F, 0x1B } };
+	// Use global IID_IServiceProvider from servprov.h (included via SDK) to avoid C4459
+	static void *s_pVDM = NULL;  // cached IVirtualDesktopManager
+	if (!s_pVDM) {
+		typedef HRESULT (WINAPI *CoCreateInstance_t)(const IID*, LPUNKNOWN, DWORD, const IID*, LPVOID*);
+		CoCreateInstance_t pCoCreate = (CoCreateInstance_t)GetProcAddress(GetModuleHandleA("ole32.dll"), "CoCreateInstance");
+		if (!pCoCreate) return true;
+		void *pSP = NULL;
+		HRESULT hr = pCoCreate(&CLSID_ImmersiveShell, NULL, 0x4 /*CLSCTX_LOCAL_SERVER*/, &IID_IServiceProvider, &pSP);
+		if (FAILED(hr) || !pSP) return true;
+		typedef HRESULT (__stdcall *QueryService_t)(void* pThis, const IID*, const IID*, void**);
+		QueryService_t qs = (QueryService_t)((IServiceProviderVtbl*)*(void**)pSP)->QueryService;
+		hr = qs(pSP, &IID_IVirtualDesktopManager, &IID_IVirtualDesktopManager, &s_pVDM);
+		((void (__stdcall*)(void*))((void**)*(void**)pSP)[2])(pSP); // Release
+		if (FAILED(hr) || !s_pVDM) return true;
+	}
+	typedef HRESULT (__stdcall *IsWindowOnCurrent_t)(void* pThis, HWND, BOOL*);
+	BOOL onCurrent = FALSE;
+	IsWindowOnCurrent_t isOn = (IsWindowOnCurrent_t)((IVirtualDesktopManagerVtbl*)*(void**)s_pVDM)->IsWindowOnCurrentVirtualDesktop;
+	HRESULT hr = isOn(s_pVDM, hw, &onCurrent);
+	if (FAILED(hr)) return true;
+	return onCurrent != FALSE;
+}
+
+//-------------------------------------------------------------------------
+// Overlay window that draws a red border over another window.
+// The border is drawn inside the window (inset from the edge) so it frames the content.
+static const int BORDER_HIGHLIGHT_WIDTH = 2;
+static const int BORDER_HIGHLIGHT_INSET = 1;  // gap from window edge to outer edge of red line
+LRESULT borderHighlightProc(HWND hWnd, UINT mesg, WPARAM wP, LPARAM lP)
+{
+	switch(mesg){
+		case WM_PAINT:{
+			PAINTSTRUCT ps;
+			HDC dc=BeginPaint(hWnd, &ps);
+			RECT rc;
+			GetClientRect(hWnd, &rc);
+			int rw=rc.right-rc.left, rh=rc.bottom-rc.top;
+			// Double-buffer to avoid flicker when overlay moves or repaints.
+			HDC memDC=CreateCompatibleDC(dc);
+			HBITMAP bmp=CreateCompatibleBitmap(dc, rw, rh);
+			HGDIOBJ oldBmp=SelectObject(memDC, bmp);
+			// Fill interior with the transparency color key (near-black)
+			HBRUSH bg=CreateSolidBrush(RGB(1,1,1));
+			FillRect(memDC, &rc, bg);
+			DeleteObject(bg);
+			// Read the border color stored by the creator via SetProp("BdrColor").
+			COLORREF clr=(COLORREF)(ULONG_PTR)GetProp(hWnd, _T("BdrColor"));
+			if(!clr) clr=RGB(255,0,0); // fallback: red
+			const int BW = BORDER_HIGHLIGHT_WIDTH;
+			const int inset = BORDER_HIGHLIGHT_INSET;
+			HBRUSH brd=CreateSolidBrush(clr);
+			// Draw border inset from window edge so it sits inside the window.
+			RECT t={rc.left+inset, rc.top+inset, rc.right-inset, rc.top+inset+BW};
+			FillRect(memDC, &t, brd);
+			t={rc.left+inset, rc.bottom-inset-BW, rc.right-inset, rc.bottom-inset};
+			FillRect(memDC, &t, brd);
+			t={rc.left+inset, rc.top+inset+BW, rc.left+inset+BW, rc.bottom-inset-BW};
+			FillRect(memDC, &t, brd);
+			t={rc.right-inset-BW, rc.top+inset+BW, rc.right-inset, rc.bottom-inset-BW};
+			FillRect(memDC, &t, brd);
+			DeleteObject(brd);
+			BitBlt(dc, ps.rcPaint.left, ps.rcPaint.top,
+				ps.rcPaint.right-ps.rcPaint.left, ps.rcPaint.bottom-ps.rcPaint.top,
+				memDC, ps.rcPaint.left, ps.rcPaint.top, SRCCOPY);
+			SelectObject(memDC, oldBmp);
+			DeleteObject(bmp);
+			DeleteDC(memDC);
+			EndPaint(hWnd, &ps);
+			return 0;
+		}
+		case WM_TIMER:{
+			HWND hwTarget=(HWND)GetWindowLongPtr(hWnd, GWLP_USERDATA);
+			if(!hwTarget || !IsWindow(hwTarget)){
+				// Target closed — destroy overlay and remove from map so red border doesn't stay on screen.
+				hideBorderHighlight(hwTarget);
+				return 0;
+			}
+			// Target hidden (e.g. Hide Window hotkey) — hide overlay until target is shown again.
+			if(!IsWindowVisible(hwTarget)){
+				if(IsWindowVisible(hWnd)) ShowWindow(hWnd, SW_HIDE);
+				return 0;
+			}
+			// Target on another virtual desktop (e.g. Win+Tab to Desktop 1 while window is on Desktop 2) — hide overlay so red border doesn't show without the window.
+			if(!isWindowOnCurrentVirtualDesktop(hwTarget)){
+				if(IsWindowVisible(hWnd)) ShowWindow(hWnd, SW_HIDE);
+				return 0;
+			}
+			// Switch to per-monitor DPI awareness so all GetWindowRect / SetWindowPos
+			// calls use physical pixel coordinates (fixes multi-monitor / mixed-DPI).
+			// DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 == (HANDLE)-4
+			typedef HANDLE (WINAPI *PFN_STDAC)(HANDLE);
+			static PFN_STDAC pfnSetDpi=(PFN_STDAC)GetProcAddress(
+				GetModuleHandleA("user32.dll"),"SetThreadDpiAwarenessContext");
+			HANDLE oldCtx=NULL;
+			if(pfnSetDpi) oldCtx=pfnSetDpi((HANDLE)-4);
+			// If target is minimised, hide the overlay entirely.
+			if(IsIconic(hwTarget)){
+				if(IsWindowVisible(hWnd)) ShowWindow(hWnd, SW_HIDE);
+				if(pfnSetDpi && oldCtx) pfnSetDpi(oldCtx);
+				return 0;
+			}
+			// Use the target's client area (inner content) so the red border is drawn
+			// inside the window, not around its outer frame.
+			RECT rc;
+			GetClientRect(hwTarget, &rc);
+			POINT ptTL = { rc.left, rc.top };
+			POINT ptBR = { rc.right, rc.bottom };
+			ClientToScreen(hwTarget, &ptTL);
+			ClientToScreen(hwTarget, &ptBR);
+			int w = ptBR.x - ptTL.x, h = ptBR.y - ptTL.y;
+			// SetWindowPos(hwnd, hwndAfter, ...) places hwnd *behind* hwndAfter. Pass the
+			// window above the target so the overlay sits on top of the target. Skip our
+			// own overlay (it can be "above" the target) so we never pass hWnd—passing
+			// self can prevent the position from updating when the target moves.
+			HWND hwAbove = GetWindow(hwTarget, GW_HWNDPREV);
+			while (hwAbove == hWnd)
+				hwAbove = GetWindow(hwAbove, GW_HWNDPREV);
+			SetWindowPos(hWnd, hwAbove ? hwAbove : HWND_TOP,
+				ptTL.x, ptTL.y, w, h, SWP_NOACTIVATE);
+			// Build the border region: full rect minus the transparent interior.
+			// Interior is inset so it matches the inner edge of the drawn border.
+			const int BW = BORDER_HIGHLIGHT_WIDTH;
+			const int inset = BORDER_HIGHLIGHT_INSET;
+			const int innerL = inset+BW, innerR = w-inset-BW, innerT = inset+BW, innerB = h-inset-BW;
+			HRGN rgnBorder=CreateRectRgn(0, 0, w, h);
+			if(innerR>innerL && innerB>innerT){
+				HRGN rgnInner=CreateRectRgn(innerL, innerT, innerR, innerB);
+				CombineRgn(rgnBorder, rgnBorder, rgnInner, RGN_DIFF);
+				DeleteObject(rgnInner);
+			}
+			// Apply the border region to the overlay.
+			// SetWindowRgn takes ownership of rgnBorder – do NOT delete it.
+			SetWindowRgn(hWnd, rgnBorder, TRUE);
+			// Force full repaint after move so the entire border (including top edge) is
+			// drawn at the new position; otherwise the top strip can stay unpainted.
+			InvalidateRect(hWnd, NULL, FALSE);
+			if(!IsWindowVisible(hWnd))
+				ShowWindow(hWnd, SW_SHOWNOACTIVATE);
+			// Keep overlay's display affinity in sync with target so the red border is
+			// also excluded from screen capture when the target is (no red line in screenshots).
+			typedef BOOL (WINAPI *PFN_GWDA)(HWND, DWORD*);
+			typedef BOOL (WINAPI *PFN_SWDA)(HWND, DWORD);
+			static PFN_GWDA pfnGwda = (PFN_GWDA)GetProcAddress(GetModuleHandleA("user32.dll"), "GetWindowDisplayAffinity");
+			static PFN_SWDA pfnSwda = (PFN_SWDA)GetProcAddress(GetModuleHandleA("user32.dll"), "SetWindowDisplayAffinity");
+			if (pfnGwda && pfnSwda) {
+				DWORD targetAffinity = 0;
+				if (pfnGwda(hwTarget, &targetAffinity))
+					pfnSwda(hWnd, targetAffinity);
+			}
+			if(pfnSetDpi && oldCtx) pfnSetDpi(oldCtx);
+			return 0;
+		}
+	}
+	return DefWindowProc(hWnd, mesg, wP, lP);
+}
+//-------------------------------------------------------------------------
 int PASCAL wWinMain(HINSTANCE hInstance, HINSTANCE, LPTSTR cmdLine, int cmdShow)
 {
 	MSG mesg;
@@ -4087,6 +4258,11 @@ int PASCAL wWinMain(HINSTANCE hInstance, HINSTANCE, LPTSTR cmdLine, int cmdShow)
 
 	wc.lpfnWndProc= (WNDPROC)zoomProc;
 	wc.lpszClassName=_T("HotkeyZoom");
+	wc.hbrBackground=0;
+	RegisterClass(&wc);
+
+	wc.lpfnWndProc= (WNDPROC)borderHighlightProc;
+	wc.lpszClassName=_T("HotkeyBorder");
 	wc.hbrBackground=0;
 	RegisterClass(&wc);
 

@@ -487,7 +487,6 @@ BEGIN
             MENUITEM " ",                           1092
             MENUITEM SEPARATOR
             MENUITEM " ",                           1116
-            MENUITEM " ",                           1117
             POPUP "Control panels"
             BEGIN
                 MENUITEM " ",                           1050
@@ -532,7 +531,6 @@ BEGIN
             MENUITEM " ",                           1110
             MENUITEM " ",                           1111
             MENUITEM " ",                           1072
-            MENUITEM " ",                           1117
             POPUP "Move window"
             BEGIN
                 MENUITEM " ",                           1028

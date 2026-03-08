@@ -8,7 +8,25 @@
 #pragma hdrstop
 #include "hotkeyp.h"
 #include <iphlpapi.h>
+#include <shobjidl.h>
 #pragma comment(lib, "iphlpapi.lib")
+
+// Show or hide a window's taskbar button (used with exclude-from-capture toggle).
+static void setTaskbarButtonVisible(HWND hw, BOOL visible)
+{
+	if (!hw || !IsWindow(hw)) return;
+	CoInitialize(NULL);
+	ITaskbarList *ptbl = NULL;
+	if (SUCCEEDED(CoCreateInstance(CLSID_TaskbarList, NULL, CLSCTX_INPROC_SERVER, IID_ITaskbarList, (void**)&ptbl)) && ptbl) {
+		if (SUCCEEDED(ptbl->HrInit())) {
+			if (visible)
+				ptbl->AddTab(hw);
+			else
+				ptbl->DeleteTab(hw);
+		}
+		ptbl->Release();
+	}
+}
 
 int
 Nvolume=2,
@@ -2455,6 +2473,68 @@ bool noCmdLine(TCHAR *param)
 	return true;
 }
 //-------------------------------------------------------------------------
+// Shared border-highlight overlay management.
+// "Always on top" (case 10) uses these; red border is shown only for topmost windows.
+// helpers.  Each target window gets its own independent overlay, so multiple
+// topmost windows can each display their own red border simultaneously.
+// The map key is the target HWND; the value is the overlay HWND.
+#include <map>
+static std::map<HWND,HWND> g_borderOverlays; // target -> overlay
+
+static void showBorderHighlight(HWND hwTarget, COLORREF clr)
+{
+	if(!hwTarget) return;
+	// If this target already has an overlay, destroy it first (color may change).
+	auto it=g_borderOverlays.find(hwTarget);
+	if(it!=g_borderOverlays.end()){
+		if(IsWindow(it->second)) DestroyWindow(it->second);
+		g_borderOverlays.erase(it);
+	}
+	// Switch to per-monitor DPI awareness so coordinates are in physical pixels.
+	// DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 == (HANDLE)-4
+	typedef HANDLE (WINAPI *PFN_STDAC)(HANDLE);
+	static PFN_STDAC pfnSetDpi=(PFN_STDAC)GetProcAddress(
+		GetModuleHandleA("user32.dll"),"SetThreadDpiAwarenessContext");
+	HANDLE oldCtx=NULL;
+	if(pfnSetDpi) oldCtx=pfnSetDpi((HANDLE)-4);
+	RECT rc;
+	GetWindowRect(hwTarget, &rc);
+	// Omit WS_EX_TOPMOST so overlay Z-order follows target (border of back window
+	// stays behind front window when two windows are highlighted).
+	HWND hwOverlay=CreateWindowEx(
+		WS_EX_LAYERED|WS_EX_TRANSPARENT|WS_EX_NOACTIVATE,
+		_T("HotkeyBorder"), NULL, WS_POPUP,
+		rc.left, rc.top, rc.right-rc.left, rc.bottom-rc.top,
+		NULL, NULL, inst, NULL);
+	if(pfnSetDpi && oldCtx) pfnSetDpi(oldCtx);
+	if(hwOverlay){
+		SetLayeredWindowAttributes(hwOverlay, RGB(1,1,1), 0, LWA_COLORKEY);
+		// Store color BEFORE ShowWindow so the first WM_PAINT reads the right value
+		SetProp(hwOverlay, _T("BdrColor"), (HANDLE)(ULONG_PTR)clr);
+		SetWindowLongPtr(hwOverlay, GWLP_USERDATA, (LONG_PTR)hwTarget);
+		ShowWindow(hwOverlay, SW_SHOWNOACTIVATE);
+		SetTimer(hwOverlay, 1, 50, NULL);
+		g_borderOverlays[hwTarget]=hwOverlay;
+	}
+}
+
+// Hides the overlay tracking hwTarget.
+// Pass NULL to unconditionally destroy ALL overlays.
+void hideBorderHighlight(HWND hwTarget)
+{
+	if(hwTarget){
+		auto it=g_borderOverlays.find(hwTarget);
+		if(it==g_borderOverlays.end()) return;
+		if(IsWindow(it->second)) DestroyWindow(it->second);
+		g_borderOverlays.erase(it);
+	} else {
+		for(auto &kv : g_borderOverlays)
+			if(IsWindow(kv.second)) DestroyWindow(kv.second);
+		g_borderOverlays.clear();
+	}
+}
+
+//-------------------------------------------------------------------------
 void command(int cmd, TCHAR *param, HotKey *hk)
 {
 	HWND w;
@@ -2509,9 +2589,15 @@ void command(int cmd, TCHAR *param, HotKey *hk)
 			break;
 		case 10: //always on top
 			w= getWindow(param);
-			SetWindowPos(w,
-				GetWindowLong(w, GWL_EXSTYLE)&WS_EX_TOPMOST ? HWND_NOTOPMOST : HWND_TOPMOST,
-				0, 0, 0, 0, SWP_NOSIZE|SWP_NOMOVE|SWP_ASYNCWINDOWPOS);
+			if(GetWindowLong(w, GWL_EXSTYLE)&WS_EX_TOPMOST){
+				// Removing topmost — hide the border overlay if it belongs to this window
+				SetWindowPos(w, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOSIZE|SWP_NOMOVE|SWP_ASYNCWINDOWPOS);
+				hideBorderHighlight(w);
+			} else {
+				// Setting topmost — show red border overlay on this window
+				SetWindowPos(w, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOSIZE|SWP_NOMOVE|SWP_ASYNCWINDOWPOS);
+				showBorderHighlight(w, RGB(255,0,0));
+			}
 			break;
 		case 11: //kill process
 			w=getWindow(param);
@@ -3095,6 +3181,18 @@ void command(int cmd, TCHAR *param, HotKey *hk)
 				if (hT) {
 					WaitForSingleObject(hT, 3000);
 					CloseHandle(hT);
+					if (affinity == 0x11) {
+						setTaskbarButtonVisible(hw, FALSE);  // hide from taskbar when excluded from capture
+						SetWindowPos(hw, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+						showBorderHighlight(hw, RGB(50,205,50));  // show green border when hidden from capture
+						// Also exclude the red border overlay from capture so it doesn't appear in screenshots.
+						auto itO = g_borderOverlays.find(hw);
+						if (itO != g_borderOverlays.end() && IsWindow(itO->second)) {
+							typedef BOOL (WINAPI *PFN_SWDA)(HWND, DWORD);
+							PFN_SWDA pfnSwda = (PFN_SWDA)GetProcAddress(GetModuleHandleA("user32.dll"), "SetWindowDisplayAffinity");
+							if (pfnSwda) pfnSwda(itO->second, 0x11);
+						}
+					}
 				} else {
 					msg(_T("CreateRemoteThread failed (error %u).\nTry running HotkeyP as administrator."), GetLastError());
 					hwExcluded = NULL;
@@ -3105,8 +3203,22 @@ void command(int cmd, TCHAR *param, HotKey *hk)
 				hwExcluded = NULL;
 			}
 			CloseHandle(hProc);
+			if (affinity == 0) {
+				SetWindowPos(hw, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+				setTaskbarButtonVisible(hw, TRUE);  // show taskbar button again when restoring
+				hideBorderHighlight(hw);  // remove red border when no longer hidden from capture
+				// Restore the red border overlay to normal capture as well.
+				auto itO = g_borderOverlays.find(hw);
+				if (itO != g_borderOverlays.end() && IsWindow(itO->second)) {
+					typedef BOOL (WINAPI *PFN_SWDA)(HWND, DWORD);
+					PFN_SWDA pfnSwda = (PFN_SWDA)GetProcAddress(GetModuleHandleA("user32.dll"), "SetWindowDisplayAffinity");
+					if (pfnSwda) pfnSwda(itO->second, 0);
+				}
+			}
 			break;
 		}
+		case 119: // No longer separate: red border is only shown with Always on top (case 10).
+			break;
 		case 116: //Set gateway to 192.168.1.{param}
 		{
 			// Build target gateway string: numeric param -> 192.168.1.N, or a full IP.

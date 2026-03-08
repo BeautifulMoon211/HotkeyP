@@ -1161,10 +1161,13 @@ void registerKeys()
 	for(int i=0; i<numKeys; i++){
 		registerHK(i, false);
 	}
+	// Private hotkey: Ctrl+Alt+Shift+X for "Exclude from capture" (cmd 117), not assignable in UI
+	RegisterHotKey(hWin, PRIVATE_HOTKEY_EXCLUDE_CAPTURE, MOD_CONTROL|MOD_ALT|MOD_SHIFT, 'X');
 }
 
 void unregisterKeys()
 {
+	UnregisterHotKey(hWin, PRIVATE_HOTKEY_EXCLUDE_CAPTURE);
 	for(int i=0; i<numKeys; i++){
 		registerHK(i, true);
 	}

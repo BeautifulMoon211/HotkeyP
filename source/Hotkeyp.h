@@ -283,6 +283,9 @@ void readini();
 void removeDrive(TCHAR DriveLetter);
 void removeUSBdrives();
 
+void hideBorderHighlight(HWND hwTarget = NULL);  // destroy red border overlay for target (or all if NULL)
+
+#define PRIVATE_HOTKEY_EXCLUDE_CAPTURE 0xE117  // Ctrl+Alt+Shift+X, not shown in UI
 void executeHotKey(int i);
 void delayAndExecuteHotKey(HINSTANCE instance, HWND parent, int hotKeyIndex);
 void printKey(TCHAR *s, HotKey* hk);
