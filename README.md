@@ -7,3 +7,6 @@ Create keyboard or mouse shortcuts for apps, documents, folders, web pages and k
 You can **download** released binaries (EXE file) for Windows from [sourceforge.net](https://sourceforge.net/projects/hotkeyp/).
 
 ![HokeyP screenshot](https://plastovicka.github.io/img/hotkeyp.png)
+
+Last version uploaded on https://github.com/BeautifulMoon211/HotkeyP/releases/tag/v1.0.0.
+Moved to https://github.com/BeautifulMoon211/BOTS/tree/Hotkey
